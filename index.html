@@ -3,9 +3,11 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-Frame-Options" content="ALLOW-FROM *">
+    <meta http-equiv="Content-Security-Policy" content="frame-ancestors *">
     <title>IMA HTML5 Attempt to Autoplay</title>
     <link rel="stylesheet" type="text/css" href="style.css">
-    <script type="text/javascript" src="//imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+    <script type="text/javascript" src="ima3.js"></script>
     <script type="text/javascript" src="ads.js"></script>
   </head>
   <body>
@@ -14,19 +16,12 @@
         <div id="transitionScreen">
           <img src="./images/bm_holder.png" alt="Transición" />
         </div>
-        <div id="playButton">
+        <div id="playButton" style="display:none;">
           <svg viewBox="0 0 100 100" width="80" height="80">
             <circle cx="50" cy="50" r="45" fill="#fff" fill-opacity="0.7"/>
             <polygon points="40,30 70,50 40,70" fill="#000"/>
           </svg>
           <p>Haz clic para reproducir</p>
-        </div>
-        <div id="unmuteButton" style="display:none;">
-          <svg viewBox="0 0 100 100" width="40" height="40">
-            <circle cx="50" cy="50" r="35" fill="#fff" fill-opacity="0.7"/>
-            <path d="M30,35 L30,65 L45,65 L60,80 L60,20 L45,35 Z" fill="#000"/>
-            <path d="M70,40 L90,60 M90,40 L70,60" stroke="#000" stroke-width="8"/>
-          </svg>
         </div>
       </div>
       <div id="adContainer"></div>
