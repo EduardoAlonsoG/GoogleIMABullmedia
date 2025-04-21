@@ -10,6 +10,13 @@ let isUserInteracted = false;
 /**
  * Initializes IMA setup.
  */
+
+window.addEventListener('message', function(event) {
+  if (event.data === 'initAds') {
+      init(); // Tu función de inicialización
+  }
+});
+
 function init() {
   // Mostrar botón de play
   document.getElementById('playButton').style.display = 'block';
@@ -19,6 +26,8 @@ function init() {
   
   // Intentar inicializar audio context
   tryInitAudioContext();
+
+  window.parent.postMessage({ type: 'playerReady' }, '*');
 }
 
 /**
@@ -200,7 +209,14 @@ function onAdEvent(adEvent) {
         requestAds();
       }, 500);
       break;
+      
   }
+  const message = {
+    type: 'adEvent',
+    eventType: adEvent.type,
+    adData: adEvent.getAd()
+    };
+    window.parent.postMessage(message, '*');
 }
 
 /**
@@ -208,6 +224,12 @@ function onAdEvent(adEvent) {
  * @param {!google.ima.AdErrorEvent} adErrorEvent
  */
 function onAdError(adErrorEvent) {
+  const error = adErrorEvent.getError();
+    window.parent.postMessage({
+        type: 'adError',
+        message: error.getMessage(),
+        errorCode: error.getErrorCode()
+    }, '*');
   console.error('Error en la carga del anuncio:', adErrorEvent.getError());
   if (adsManager) {
     adsManager.destroy();
