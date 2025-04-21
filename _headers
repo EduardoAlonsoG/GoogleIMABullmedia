@@ -1,0 +1,4 @@
+/*
+  X-Frame-Options: ALLOW-FROM *
+  Content-Security-Policy: frame-ancestors * 'unsafe-inline'
+  Access-Control-Allow-Origin: *
