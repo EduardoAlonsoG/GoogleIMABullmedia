@@ -1,29 +1,66 @@
-// Copyright 2017 Google Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 let adsManager;
 let adsLoader;
 let adDisplayContainer;
 let adsInitialized;
 let width;
 let height;
+let audioContext;
+let isUserInteracted = false;
 
 /**
  * Initializes IMA setup.
  */
-function initDesktopAutoplay() {
+function init() {
+  // Mostrar botón de play
+  document.getElementById('playButton').style.display = 'block';
+  
+  // Configurar listeners de interacción
+  setupInteractionListeners();
+  
+  // Intentar inicializar audio context
+  tryInitAudioContext();
+}
+
+/**
+ * Sets up interaction listeners.
+ */
+function setupInteractionListeners() {
+  const playButton = document.getElementById('playButton');
+  const unmuteButton = document.getElementById('unmuteButton');
+  
+  playButton.addEventListener('click', function() {
+    isUserInteracted = true;
+    this.style.display = 'none';
     setUpIMA();
+  });
+  
+  unmuteButton.addEventListener('click', function() {
+    if (adsManager) {
+      const currentVolume = adsManager.getVolume();
+      adsManager.setVolume(currentVolume > 0 ? 0 : 1);
+      this.querySelector('path:last-child').style.display = currentVolume > 0 ? 'block' : 'none';
+    }
+  });
+}
+
+/**
+ * Tries to initialize audio context.
+ */
+function tryInitAudioContext() {
+  try {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // En algunos navegadores necesitamos "resumir" el contexto después de una interacción
+    if (audioContext.state === 'suspended') {
+      document.addEventListener('click', function resumeAudio() {
+        audioContext.resume().then(() => {
+          document.removeEventListener('click', resumeAudio);
+        });
+      }, { once: true });
+    }
+  } catch (e) {
+    console.log('AudioContext no soportado:', e);
+  }
 }
 
 /**
@@ -51,9 +88,6 @@ function setUpIMA() {
  * Sets the 'adContainer' div as the IMA ad display container.
  */
 function createAdDisplayContainer() {
-  // We assume the adContainer is the DOM id of the element that will house
-  // the ads.
-
   const adContainer = document.getElementById('content');
   adContainer.style.position = 'absolute';
   adContainer.style.top = '0';
@@ -75,8 +109,7 @@ function requestAds() {
   const adsRequest = new google.ima.AdsRequest();
   adsRequest.adTagUrl = 'https://pubads.g.doubleclick.net/gampad/ads?iu=/6881/televisa.bullmedia/spotvideo&description_url=https%3A%2F%2Fbullmedia.mx%2F&tfcd=0&npa=0&sz=640x360%7C640x480%7C854x480%7C1200x675%7C1280x720%7C1280x800%7C1920x1080&gdfp_req=1&unviewed_position_start=1&output=vast&env=vp&impl=s&ad_rule=1&vpmute=0&plcmt=1&correlator=';
 
-  // Specify the linear and nonlinear slot sizes. This helps the SDK to
-  // select the correct creative if multiple are returned.
+  // Specify the linear and nonlinear slot sizes.
   adsRequest.linearAdSlotWidth = width;
   adsRequest.linearAdSlotHeight = height;
 
@@ -91,13 +124,19 @@ function requestAds() {
  * @param {!google.ima.AdsManagerLoadedEvent} adsManagerLoadedEvent
  */
 function onAdsManagerLoaded(adsManagerLoadedEvent) {
-  // Get the ads manager.
   const adsRenderingSettings = new google.ima.AdsRenderingSettings();
-  adsRenderingSettings.loadVideoTimeout = 16000; // 16 segundos
-
+  adsRenderingSettings.loadVideoTimeout = 16000;
   adsRenderingSettings.restoreCustomPlaybackStateOnAdBreakComplete = true;
-  // videoContent should be set to the content video element.
+  adsRenderingSettings.autoPlayAdBreaks = true;
+  
   adsManager = adsManagerLoadedEvent.getAdsManager(null, adsRenderingSettings);
+
+  // Iniciar silenciado si no hay interacción del usuario
+  if (!isUserInteracted) {
+    adsManager.setVolume(0);
+    document.getElementById('unmuteButton').style.display = 'block';
+    document.getElementById('unmuteButton').querySelector('path:last-child').style.display = 'none';
+  }
 
   // Add listeners to the required events.
   adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
@@ -115,14 +154,12 @@ function onAdsManagerLoaded(adsManagerLoadedEvent) {
  */
 function playAds() {
   try {
-    // Initialize the ads manager. Ad rules playlist will start at this time.
     adsManager.init(width, height, google.ima.ViewMode.NORMAL);
-    // Call play to start showing the ad. Single video and overlay ads will
-    // start at this time; the call will be ignored for ad rules.
     adsManager.start();
   } catch (adError) {
-    // An error may be thrown if there was a problem with the VAST response.
     console.log('Error al iniciar los anuncios:', adError);
+    // Mostrar botón de play si falla
+    document.getElementById('playButton').style.display = 'block';
   }
 }
 
@@ -131,41 +168,37 @@ function playAds() {
  * @param {!google.ima.AdEvent} adEvent
  */
 function onAdEvent(adEvent) {
-  // Retrieve the ad from the event. Some events (for example,
-  // ALL_ADS_COMPLETED) don't have ad object associated.
   const ad = adEvent.getAd();
   const transitionScreen = document.getElementById('transitionScreen');
+  
   switch (adEvent.type) {
     case google.ima.AdEvent.Type.LOADED:
-        console.log('Anuncio cargado');
-
-        transitionScreen.style.opacity = '0';
-        transitionScreen.style.visibility = 'hidden';
-        transitionScreen.style.transitionProperty = "opacity";
-        transitionScreen.style.transitionDuration = "0.5s";
-        transitionScreen.style.transitionTimingFunction = "ease-in-out";
+      console.log('Anuncio cargado');
+      transitionScreen.style.opacity = '0';
+      transitionScreen.style.visibility = 'hidden';
+      transitionScreen.style.transition = 'opacity 0.5s ease-in-out';
       break;
     case google.ima.AdEvent.Type.STARTED:
-        console.log('Anuncio iniciado');
+      console.log('Anuncio iniciado');
       break;
     case google.ima.AdEvent.Type.SKIPPED:
-        console.log('Anuncio skyp');
+      console.log('Anuncio skipeado');
       break;
     case google.ima.AdEvent.Type.COMPLETE:
-        console.log('Anuncio completado');
+      console.log('Anuncio completado');
       break;
     case google.ima.AdEvent.Type.ALL_ADS_COMPLETED:
-        console.log('Todo Anuncio completado');
-        transitionScreen.style.opacity = '1';
-        transitionScreen.style.visibility = 'visible';
-        transitionScreen.style.transitionProperty = "opacity";
-        transitionScreen.style.transitionDuration = "0.5s";
-        transitionScreen.style.transitionTimingFunction = "ease-in-out";
-        setTimeout(() => {
-          console.log('Se pide nuevo Anuncio');
+      console.log('Todo Anuncio completado');
+      transitionScreen.style.opacity = '1';
+      transitionScreen.style.visibility = 'visible';
+      transitionScreen.style.transition = 'opacity 0.5s ease-in-out';
+      setTimeout(() => {
+        console.log('Se pide nuevo Anuncio');
+        if (adsManager) {
           adsManager.destroy();
-          requestAds(); // Pedimos un nuevo anuncio
-        }, 500);
+        }
+        requestAds();
+      }, 500);
       break;
   }
 }
@@ -176,15 +209,13 @@ function onAdEvent(adEvent) {
  */
 function onAdError(adErrorEvent) {
   console.error('Error en la carga del anuncio:', adErrorEvent.getError());
-  // Handle the error logging.
   if (adsManager) {
     adsManager.destroy();
   }
-  // Fall back to playing content.
-   setTimeout(requestAds, 2000); 
+  setTimeout(requestAds, 2000);
 }
 
-// Ajustar el tamaÃ±o de los anuncios al cambiar el tamaÃ±o de la ventana
+// Ajustar el tamaño de los anuncios al cambiar el tamaño de la ventana
 window.addEventListener('resize', () => {
   if (adsManager) {
     width = window.innerWidth;
@@ -192,3 +223,6 @@ window.addEventListener('resize', () => {
     adsManager.resize(width, height, google.ima.ViewMode.NORMAL);
   }
 });
+
+// Inicializar cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', init);
