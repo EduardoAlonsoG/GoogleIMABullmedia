@@ -21,6 +21,62 @@ let isUserInteracted = false;
 // Detectar si estamos en un iframe
 const isInIframe = window.self !== window.top;
 
+window.addEventListener('message', function(event) {
+  // Verificar origen del mensaje
+  if (event.origin !== "https://eduardoalonsog.github.io" && 
+      event.origin !== "file://") return;
+  
+  if (event.data.type === 'init') {
+      // Configurar según parámetros recibidos
+      const config = event.data.config || {};
+      
+      // Inicializar con configuración específica
+      initWithConfig(config);
+  }
+});
+
+function initWithConfig(config) {
+  // Modificar el comportamiento según la configuración
+  if (config.allowCookies === false) {
+      // Deshabilitar funcionalidades que requieren cookies
+      console.log('Modo sin cookies habilitado');
+  }
+  
+  // Iniciar lógica de anuncios
+  if (config.autoplay) {
+      initDesktopAutoplay();
+  } else {
+      // Mostrar botón de play
+      const playButton = document.getElementById('playButton');
+      if (playButton) {
+          playButton.style.display = 'block';
+      }
+  }
+}
+
+function initDesktopAutoplay() {
+  try {
+      // Verificar si el SDK IMA está cargado correctamente
+      if (typeof google === 'undefined' || !google.ima) {
+          throw new Error('IMA SDK no está cargado correctamente');
+      }
+      
+      setUpIMA();
+  } catch (error) {
+      console.error('Error en initDesktopAutoplay:', error);
+      
+      // Notificar al padre sobre el error
+      if (window.parent) {
+          window.parent.postMessage({
+              type: 'error',
+              message: error.message
+          }, '*');
+      }
+      
+      // Reintentar después de un retraso
+      setTimeout(initDesktopAutoplay, 2000);
+  }
+}
 // Función de inicialización segura
 function safeInit() {
     try {
