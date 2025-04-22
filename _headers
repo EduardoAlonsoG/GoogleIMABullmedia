@@ -1,4 +1,5 @@
 /*
   X-Frame-Options: ALLOW-FROM *
-  Content-Security-Policy: frame-ancestors * 'unsafe-inline' 'unsafe-eval' https:;
+  Content-Security-Policy: frame-ancestors * 'unsafe-inline' https:;
   Access-Control-Allow-Origin: *
+  Feature-Policy: autoplay *; fullscreen *
