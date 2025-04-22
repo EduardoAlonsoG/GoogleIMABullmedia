@@ -1,76 +1,66 @@
-// Versión mejorada de ads.js que maneja todos los errores reportados
-
-// 1. Variables globales con protección
+/* ===== Configuración inicial y detección de entorno ===== */
 let adsManager = null;
 let adsLoader = null;
 let adDisplayContainer = null;
-let width = 0;
-let height = 0;
+let width = window.innerWidth;
+let height = window.innerHeight;
 let isUserInteracted = false;
-let isInIframe = false;
+const isInIframe = window.self !== window.top;
 
-// 2. Detección segura de entorno
-function detectEnvironment() {
-    try {
-        isInIframe = window.self !== window.top;
-        console.log(`Entorno detectado: ${isInIframe ? 'Iframe' : 'Página directa'}`);
-    } catch (e) {
-        console.warn('Error al detectar entorno:', e);
-        isInIframe = false;
-    }
-}
-
-// 3. Inicialización segura del SDK IMA
-function verifyIMASDK() {
+/* ===== Verificación del SDK IMA ===== */
+function checkIMASDK() {
     if (typeof google === 'undefined' || !google.ima) {
-        console.error('IMA SDK no está cargado correctamente');
+        console.error("ERROR: IMA SDK no está cargado. Verifica que ima3.js esté importado correctamente.");
         
-        // Intentar recuperación para desarrollo local
+        // Intentar cargar el SDK dinámicamente si falla (solo en desarrollo)
         if (window.location.protocol === 'file:') {
-            console.warn('Modo local detectado - cargando SDK desde CDN');
+            console.warn("Intentando cargar IMA SDK desde CDN...");
             const script = document.createElement('script');
             script.src = 'https://imasdk.googleapis.com/js/sdkloader/ima3.js';
-            script.onload = initializeAfterSDKLoad;
-            script.onerror = handleSDKLoadError;
+            script.onload = () => {
+                console.log("IMA SDK cargado dinámicamente con éxito.");
+                initialize();
+            };
+            script.onerror = () => {
+                console.error("Fallo al cargar IMA SDK dinámicamente.");
+                showErrorUI();
+            };
             document.head.appendChild(script);
-            return false;
+        } else {
+            showErrorUI();
         }
         return false;
     }
     return true;
 }
 
-function handleSDKLoadError() {
-    console.error('Falló la carga del SDK IMA');
-    document.getElementById('playButton').style.display = 'block';
-}
+/* ===== Inicialización segura ===== */
+function initialize() {
+    if (!checkIMASDK()) return;
 
-function initializeAfterSDKLoad() {
-    if (verifyIMASDK()) {
-        safeInit();
+    // Configuración para iframe
+    if (isInIframe) {
+        setupIframeCommunication();
+    } else {
+        setupDirectPage();
     }
 }
 
-// 4. Sistema de mensajes seguro para iframes
-function setupMessageSystem() {
-    if (!isInIframe) return;
-
+/* ===== Configuración para iframe (comunicación con window.parent) ===== */
+function setupIframeCommunication() {
     window.addEventListener('message', (event) => {
-        // Verificación de origen para seguridad
-        const allowedOrigins = [
-            'https://eduardoalonsog.github.io',
+        // Solo aceptar mensajes de orígenes confiables
+        const trustedOrigins = [
             'file://',
             'http://localhost',
-            'http://127.0.0.1'
+            'https://eduardoalonsog.github.io'
         ];
 
-        if (!allowedOrigins.some(origin => event.origin.startsWith(origin))) {
-            return;
-        }
+        if (!trustedOrigins.some(origin => event.origin.startsWith(origin))) return;
 
         if (event.data.type === 'initAds') {
-            console.log('Comando de inicio recibido');
-            startPlayback();
+            console.log("Iniciando anuncios desde iframe...");
+            startAdPlayback();
         }
     });
 
@@ -78,188 +68,171 @@ function setupMessageSystem() {
     window.parent.postMessage({ type: 'adsReady' }, '*');
 }
 
-// 5. Inicialización principal segura
-function safeInit() {
-    try {
-        detectEnvironment();
-        
-        if (!verifyIMASDK()) {
-            throw new Error('SDK IMA no disponible');
-        }
-
-        // Configurar elementos UI
-        const playButton = document.getElementById('playButton');
-        if (playButton) {
-            playButton.style.display = 'block';
-            playButton.addEventListener('click', () => {
-                isUserInteracted = true;
-                playButton.style.display = 'none';
-                startPlayback();
-            });
-        }
-
-        // Configurar sistema de mensajes si es iframe
-        if (isInIframe) {
-            setupMessageSystem();
-        } else {
-            // Autoplay para página directa
-            startPlayback();
-        }
-    } catch (error) {
-        console.error('Error en safeInit:', error);
-        showFallbackUI();
-    }
-}
-
-function showFallbackUI() {
+/* ===== Configuración para página directa ===== */
+function setupDirectPage() {
     const playButton = document.getElementById('playButton');
     if (playButton) {
         playButton.style.display = 'block';
-        playButton.textContent = 'Clic para reintentar';
-        playButton.onclick = () => {
-            window.location.reload();
-        };
+        playButton.addEventListener('click', () => {
+            isUserInteracted = true;
+            playButton.style.display = 'none';
+            startAdPlayback();
+        });
+    } else {
+        // Autoplay si no hay botón (con mute por defecto)
+        startAdPlayback();
     }
 }
 
-// 6. Control de reproducción
-function startPlayback() {
+/* ===== Inicio de la reproducción de anuncios ===== */
+function startAdPlayback() {
     try {
         setUpIMA();
     } catch (error) {
-        console.error('Error en startPlayback:', error);
-        setTimeout(startPlayback, 2000); // Reintentar después de 2 segundos
+        console.error("Error al iniciar anuncios:", error);
+        setTimeout(startAdPlayback, 2000); // Reintentar después de 2 segundos
     }
 }
 
-// 7. Configuración IMA (resto de tus funciones originales con manejo de errores)
+/* ===== Configuración del contenedor IMA ===== */
 function setUpIMA() {
     try {
-        createAdDisplayContainer();
-        
-        adsLoader = new google.ima.AdsLoader(adDisplayContainer);
-        
-        // Configuración de event listeners con protección
-        const safeAddEventListener = (target, event, handler) => {
-            try {
-                target.addEventListener(event, handler, false);
-            } catch (e) {
-                console.error(`Error al agregar listener para ${event}:`, e);
-            }
-        };
-
-        safeAddEventListener(adsLoader, 
-            google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, 
-            onAdsManagerLoaded);
-            
-        safeAddEventListener(adsLoader, 
-            google.ima.AdErrorEvent.Type.AD_ERROR, 
-            onAdError);
-
-        adDisplayContainer.initialize();
-        requestAds();
-    } catch (error) {
-        console.error('Error en setUpIMA:', error);
-        throw error;
-    }
-}
-
-// 8. Función createAdDisplayContainer con verificación
-function createAdDisplayContainer() {
-    try {
+        // Crear contenedor de anuncios
         const adContainer = document.getElementById('content');
-        if (!adContainer) {
-            throw new Error('Elemento #content no encontrado');
-        }
+        if (!adContainer) throw new Error("No se encontró el contenedor de anuncios (#content).");
 
-        // Configuración de estilos segura
-        const safeStyleApply = (element, styles) => {
-            Object.keys(styles).forEach(prop => {
-                try {
-                    element.style[prop] = styles[prop];
-                } catch (e) {
-                    console.error(`Error al aplicar estilo ${prop}:`, e);
-                }
-            });
-        };
-
-        safeStyleApply(adContainer, {
-            position: 'absolute',
-            top: '0',
-            left: '0',
-            width: '100vw',
-            height: '100vh'
-        });
+        adContainer.style.position = 'absolute';
+        adContainer.style.top = '0';
+        adContainer.style.left = '0';
+        adContainer.style.width = '100%';
+        adContainer.style.height = '100%';
 
         adDisplayContainer = new google.ima.AdDisplayContainer(adContainer);
+        adDisplayContainer.initialize();
+
+        // Configurar el cargador de anuncios
+        adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+        adsLoader.addEventListener(
+            google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+            onAdsManagerLoaded
+        );
+        adsLoader.addEventListener(
+            google.ima.AdErrorEvent.Type.AD_ERROR,
+            onAdError
+        );
+
+        // Solicitar anuncios
+        requestAds();
     } catch (error) {
-        console.error('Error en createAdDisplayContainer:', error);
+        console.error("Error en setUpIMA:", error);
         throw error;
     }
 }
 
-// 9. Manejo de eventos de anuncios con protección
-function onAdEvent(adEvent) {
+/* ===== Solicitud de anuncios ===== */
+function requestAds() {
+    const adsRequest = new google.ima.AdsRequest();
+    adsRequest.adTagUrl = 'https://pubads.g.doubleclick.net/gampad/ads?iu=/6881/televisa.bullmedia/spotvideo&description_url=https%3A%2F%2Fbullmedia.mx%2F&tfcd=0&npa=0&sz=640x360%7C640x480%7C854x480%7C1200x675%7C1280x720%7C1280x800%7C1920x1080&gdfp_req=1&unviewed_position_start=1&output=vast&env=vp&impl=s&ad_rule=1&vpmute=0&plcmt=1&correlator=';
+
+    adsRequest.linearAdSlotWidth = width;
+    adsRequest.linearAdSlotHeight = height;
+    adsRequest.nonLinearAdSlotWidth = width;
+    adsRequest.nonLinearAdSlotHeight = (150 * width) / 640;
+
+    adsLoader.requestAds(adsRequest);
+}
+
+/* ===== Manejo de anuncios cargados ===== */
+function onAdsManagerLoaded(event) {
     try {
-        const transitionScreen = document.getElementById('transitionScreen');
-        if (!transitionScreen) return;
+        const adsRenderingSettings = new google.ima.AdsRenderingSettings();
+        adsRenderingSettings.loadVideoTimeout = 16000;
+        adsRenderingSettings.restoreCustomPlaybackStateOnAdBreakComplete = true;
 
-        const safeStyleTransition = (element, styles) => {
-            try {
-                Object.assign(element.style, styles);
-            } catch (e) {
-                console.error('Error en transición de estilos:', e);
-            }
-        };
+        adsManager = event.getAdsManager(null, adsRenderingSettings);
 
-        switch (adEvent.type) {
-            case google.ima.AdEvent.Type.LOADED:
-                safeStyleTransition(transitionScreen, {
-                    opacity: '0',
-                    visibility: 'hidden',
-                    transition: 'opacity 0.5s ease-in-out'
-                });
-                break;
-                
-            case google.ima.AdEvent.Type.ALL_ADS_COMPLETED:
-                safeStyleTransition(transitionScreen, {
-                    opacity: '1',
-                    visibility: 'visible',
-                    transition: 'opacity 0.5s ease-in-out'
-                });
-                setTimeout(() => {
-                    if (adsManager) {
-                        adsManager.destroy();
-                        adsManager = null;
-                    }
-                    requestAds();
-                }, 500);
-                break;
+        // Iniciar silenciado si no hay interacción del usuario
+        if (!isUserInteracted) {
+            adsManager.setVolume(0);
         }
 
-        // Notificar al padre sobre eventos importantes
-        if (isInIframe && window.parent) {
-            window.parent.postMessage({
-                type: 'adEvent',
-                event: adEvent.type
-            }, '*');
-        }
+        // Eventos del AdsManager
+        adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
+        adsManager.addEventListener(google.ima.AdEvent.Type.LOADED, onAdEvent);
+        adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, onAdEvent);
+        adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, onAdEvent);
+        adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, onAdEvent);
+
+        // Iniciar anuncios
+        playAds();
     } catch (error) {
-        console.error('Error en onAdEvent:', error);
+        console.error("Error en onAdsManagerLoaded:", error);
+        onAdError(error);
     }
 }
 
-// 10. Inicialización cuando el DOM está listo
-function domReady() {
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        setTimeout(safeInit, 1);
-    } else {
-        document.addEventListener('DOMContentLoaded', safeInit);
+/* ===== Reproducción de anuncios ===== */
+function playAds() {
+    try {
+        adsManager.init(width, height, google.ima.ViewMode.NORMAL);
+        adsManager.start();
+    } catch (error) {
+        console.error("Error en playAds:", error);
+        showErrorUI();
     }
 }
 
-// Iniciar todo
-domReady();
+/* ===== Manejo de eventos de anuncios ===== */
+function onAdEvent(event) {
+    const transitionScreen = document.getElementById('transitionScreen');
+    if (!transitionScreen) return;
 
-// [Aquí incluirías el resto de tus funciones originales (requestAds, onAdsManagerLoaded, playAds, onAdError)
-// con el mismo nivel de manejo de errores y protección]
+    switch (event.type) {
+        case google.ima.AdEvent.Type.LOADED:
+            transitionScreen.style.opacity = '0';
+            transitionScreen.style.visibility = 'hidden';
+            transitionScreen.style.transition = 'opacity 0.5s ease-in-out';
+            break;
+
+        case google.ima.AdEvent.Type.ALL_ADS_COMPLETED:
+            transitionScreen.style.opacity = '1';
+            transitionScreen.style.visibility = 'visible';
+            transitionScreen.style.transition = 'opacity 0.5s ease-in-out';
+            setTimeout(() => {
+                if (adsManager) adsManager.destroy();
+                requestAds(); // Recargar nuevos anuncios
+            }, 500);
+            break;
+    }
+}
+
+/* ===== Manejo de errores ===== */
+function onAdError(error) {
+    console.error("Error en el anuncio:", error);
+    if (adsManager) adsManager.destroy();
+    setTimeout(requestAds, 2000); // Reintentar después de 2 segundos
+}
+
+/* ===== UI de error ===== */
+function showErrorUI() {
+    const playButton = document.getElementById('playButton');
+    if (playButton) {
+        playButton.style.display = 'block';
+        playButton.textContent = 'Reintentar';
+        playButton.onclick = () => window.location.reload();
+    }
+}
+
+/* ===== Inicialización al cargar el DOM ===== */
+if (document.readyState === 'complete') {
+    initialize();
+} else {
+    document.addEventListener('DOMContentLoaded', initialize);
+}
+
+/* ===== Manejo de redimensionamiento ===== */
+window.addEventListener('resize', () => {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    if (adsManager) adsManager.resize(width, height, google.ima.ViewMode.NORMAL);
+});
